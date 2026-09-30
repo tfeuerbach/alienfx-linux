@@ -74,6 +74,16 @@ Some notebooks can have 2 devices - APIv4 (for logo, power button, etc) and APIv
 - Global (all lights) hardware light effects (APIv5, v8)
 - Power/indicator button light control (AC/battery hardware switch and effects)
 
+## Testing
+
+```bash
+cmake -S . -B build -G Ninja -DALIENFX_BUILD_CLI=ON -DALIENFX_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+`pipe` starts `alienfx_cli`, writes to its stdin, and checks stdout, stderr, and the exit code. `--help` and `-h` must list the lighting commands. `setall` and `setkeys` with no arguments must fail before a device is opened. `lint` walks the C and C++ sources for trailing whitespace, CR bytes, a missing final newline, and conflict markers. Neither test names a laptop or opens a USB device. GitHub Actions runs both on every pull request, and once more on each push to `main`.
+
 ## Dependencies
 
 - cmake

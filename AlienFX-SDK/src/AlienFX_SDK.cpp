@@ -1,4 +1,5 @@
 #include "AlienFX_SDK.h"
+#include "Area51Protocol.h"
 
 #include <unistd.h>
 
@@ -401,7 +402,7 @@ void Functions::AddV5DataBlock(uint8_t bPos, vector<Afx_icommand>* mods,
 }
 
 bool Functions::IsArea51Keyboard() const {
-    return vid == 0x0d62 && pid == 0x1bbc;
+    return IsArea51Usb(vid, pid);
 }
 
 bool Functions::SetArea51KeyColors(vector<Afx_lightblock>* colors) {
@@ -413,8 +414,7 @@ bool Functions::SetArea51KeyColors(vector<Afx_lightblock>* colors) {
     // block this report set documents, and it is the one the function row
     // stays on when the other three have already been stopped. 0x13 is the
     // loop command and must not be sent here.
-    const uint8_t stopSubs[] = {0x05, 0x06, 0x07, 0x01};
-    for (uint8_t sub : stopSubs) {
+    for (uint8_t sub : kArea51StopSubs) {
         vector<Afx_icommand> mods;
         mods.push_back({4, vector<uint8_t>(60, 0x01)});
         const uint8_t cmd[] = {2, 0x8c, sub};
@@ -425,39 +425,36 @@ bool Functions::SetArea51KeyColors(vector<Afx_lightblock>* colors) {
     // function row. A gap between color reports does the same to the report
     // that just went out.
 
-    vector<vector<Afx_icommand>> packets;
+    vector<Area51KeyColor> keys;
     if (colors) {
-        for (auto nc = colors->begin(); nc != colors->end();) {
-            vector<Afx_icommand> mods;
-            for (uint8_t bPos = 4; bPos + 3 < length && nc != colors->end();
-                 bPos += 4) {
-                if (nc->act.empty()) {
-                    ++nc;
-                    continue;
-                }
-                const Afx_action& c = nc->act.front();
-                mods.push_back({bPos, {nc->index, c.r, c.g, c.b}});
-                ++nc;
-            }
-            if (!mods.empty()) packets.push_back(std::move(mods));
+        for (const Afx_lightblock& block : *colors) {
+            if (block.act.empty())
+                continue;
+            const Afx_action& c = block.act.front();
+            keys.push_back({block.index, c.r, c.g, c.b});
         }
     }
+    const vector<Area51Report> reports = PackArea51Reports(keys);
+    vector<vector<Afx_icommand>> packets;
+    packets.reserve(reports.size());
+    for (const Area51Report& report : reports) {
+        vector<Afx_icommand> mods;
+        uint8_t bPos = 4;
+        for (const Area51KeyColor& key : report.keys) {
+            mods.push_back({bPos, {key.id, key.r, key.g, key.b}});
+            bPos = static_cast<uint8_t>(bPos + 4);
+        }
+        if (!mods.empty())
+            packets.push_back(std::move(mods));
+    }
 
-    bool any = !packets.empty();
-    for (int pass = 0; pass < 2; ++pass) {
-        for (const auto& mods : packets) {
-            vector<Afx_icommand> copy = mods;
-            any = PrepareAndSend(COMMV5_colorSet, &copy) && any;
-            ok = any && ok;
-        }
-        // Rewrite the first report after the rest of the map. That report is
-        // the one the firmware restores, so it has to be the last write those
-        // keys see, not the first.
-        if (!packets.empty()) {
-            vector<Afx_icommand> copy = packets.front();
-            any = PrepareAndSend(COMMV5_colorSet, &copy) && any;
-            ok = any && ok;
-        }
+    bool any = false;
+    for (const Area51Step& step : Area51SendOrder(packets.size())) {
+        if (step.kind == Area51StepKind::Stop)
+            continue;
+        vector<Afx_icommand> copy = packets[step.report];
+        any = PrepareAndSend(COMMV5_colorSet, &copy) && any;
+        ok = any && ok;
     }
 
     inSet = false;

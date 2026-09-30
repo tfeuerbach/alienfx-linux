@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "AlienFX_SDK.h"
+#include "Area51Protocol.h"
 #include "AlienFan-SDK.h"
 #include "const.h"
 
@@ -430,19 +431,12 @@ int main(int argc, char** argv) {
         }
         // Same power-button action the hardware already shows. Phase time 3
         // is the fast strobe. A rainbow opcode with no color left the LED off.
-        const uint8_t hold = 40;
-        const uint8_t tempo = 0x64;
-        AlienFX_SDK::Afx_lightblock act{
-            .index = 0x1b,
-            .act = {
-                {AlienFX_SDK::AlienFX_A_Power, hold, tempo, 255, 0, 0},
-                {AlienFX_SDK::AlienFX_A_Power, hold, tempo, 255, 165, 0},
-                {AlienFX_SDK::AlienFX_A_Power, hold, tempo, 255, 255, 0},
-                {AlienFX_SDK::AlienFX_A_Power, hold, tempo, 0, 255, 0},
-                {AlienFX_SDK::AlienFX_A_Power, hold, tempo, 0, 191, 255},
-                {AlienFX_SDK::AlienFX_A_Power, hold, tempo, 0, 0, 255},
-                {AlienFX_SDK::AlienFX_A_Power, hold, tempo, 128, 0, 128},
-            }};
+        AlienFX_SDK::Afx_lightblock act{.index = 0x1b, .act = {}};
+        act.act.reserve(kPowerRainbowSteps.size());
+        for (const PowerRainbowStep& step : kPowerRainbowSteps) {
+            act.act.push_back({AlienFX_SDK::AlienFX_A_Power, kPowerRainbowHold,
+                               kPowerRainbowTempo, step.r, step.g, step.b});
+        }
         if (!dev->dev->SetPowerAction(&act)) std::exit(1);
     });
 
